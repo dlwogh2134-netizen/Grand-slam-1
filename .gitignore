@@ -1,6 +1,6 @@
 .idea/
 .venv/
-_pycahe_/
+__pycache__/
 migrations/
 
 *db
