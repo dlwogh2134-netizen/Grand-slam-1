@@ -21,6 +21,7 @@ def create_app():
     db.init_app(app)
     migrate.init_app(app, db)
 
+
     # 블루프린트 등록
     from .views import main_views
     app.register_blueprint(main_views.bp)
