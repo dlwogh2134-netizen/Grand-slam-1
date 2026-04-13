@@ -1,6 +1,6 @@
-import requests
 from flask import current_app
 from flask import Blueprint, flash, redirect, render_template, request, url_for, g
+import requests
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import session
 from app.form import UserLoginForm
