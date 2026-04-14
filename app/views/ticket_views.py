@@ -198,6 +198,7 @@ def ticket_create():
 
 # 티켓 상세정보 페이지 연결 (주소: /ticket/ticket_detail/<int:ticket_id>)
 @bp.route('/ticket_detail/<int:ticket_id>/')
+@login_required
 def ticket_detail(ticket_id):
     # DB에서 해당 티켓을 찾기
     ticket = Ticket.query.get_or_404(ticket_id)
