@@ -167,14 +167,6 @@ def edit_profile():
     detail_address_value = request.form.get('detailAddress', '')
     return render_template('auth/edit_profile.html', form=form, detail_address_value=detail_address_value)
 
-
-@bp.route('/ticket_detail/<int:ticket_id>')
-def subpage(ticket_id):
-    # DB에서 해당 티켓을 찾기
-    ticket = Ticket.query.get_or_404(ticket_id)
-    # 찾은 ticket 데이터를 HTML로 리턴
-    return render_template('ticket/ticket_detail.html', ticket=ticket)
-
 @bp.route('/logout/')
 def logout():
     session.clear()
