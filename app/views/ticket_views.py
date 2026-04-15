@@ -7,6 +7,19 @@ from constants import KBO_TEAMS
 from app import db
 from werkzeug.security import generate_password_hash
 
+TEAM_SHORT_NAMES = {
+    '두산베어스': '두산',
+    '삼성라이온즈': '삼성',
+    'NC다이노스': 'NC',
+    'SSG랜더스': 'SSG',
+    'LG트윈스': 'LG',
+    '롯데자이언츠': '롯데',
+    'KIA타이거즈': 'KIA',
+    '키움히어로즈': '키움',
+    '한화이글스': '한화',
+    'KT위즈': 'KT'
+}
+
 bp = Blueprint('ticket', __name__, url_prefix='/ticket')
 
 
@@ -26,7 +39,9 @@ def ticket_list():
     #  기본 쿼리 생성
    
     query = Ticket.query
-
+    # 판매중 티켓만 조회
+    
+    query = query.filter(Ticket.status == '판매중')
     
     #  필터 조건 적용 (검색 기능)
     
@@ -49,8 +64,13 @@ def ticket_list():
         per_page=10,      # 한 페이지당 10개
         error_out=False   # 에러 방지
     )
-    #  created_at.desc() → 최신 등록순 정렬
 
+
+    for ticket in tickets.items:
+     ticket.awayteam_short = TEAM_SHORT_NAMES.get(
+        ticket.awayteam_name,
+        ticket.awayteam_name
+    )
     
     #  선택한 팀 정보 찾기 (UI용)
     
@@ -59,6 +79,7 @@ def ticket_list():
         if t['name'] == team:
             selected_team_data = t
             break
+            
 
     #  템플릿으로 데이터 전달
     return render_template(
@@ -122,7 +143,7 @@ def pay_success():
             return redirect(url_for('main.index'))
         
     else:
-        # 💥 승인 실패 (금액이 조작되었거나, 한도가 초과된 경우 등)
+        #  승인 실패 (금액이 조작되었거나, 한도가 초과된 경우 등)
         error_data = response.json()
         error_msg = error_data.get('message', '알 수 없는 결제 에러가 발생했습니다.')
         
@@ -171,8 +192,9 @@ def ticket_create():
         # 'seat' 필드에 좌석 등급과 상세 위치를 조합하여 저장
         full_seat_info = f"{seat_grade} {seat_detail}".strip()
 
-        # 사용자가 입력한 PIN 번호를 암호화
-        hashed_pin = generate_password_hash(user_pin)
+        #  사용자가 입력한 PIN 번호를 암호화 // 구매자에게 보이기 위해선 암호화 임시 제거 추후 다른방향모색
+        # hashed_pin = generate_password_hash(user_pin)
+
         # Ticket 객체 생성
         ticket = Ticket(
             seller_id=g.user.id, # 현재 로그인된 사용자 ID
@@ -182,7 +204,7 @@ def ticket_create():
             seat=full_seat_info,
             quantity=quantity,
             price=price, # 1매당 가격
-            pin=hashed_pin, # 암호화된 PIN 저장
+            pin=user_pin, # 암호화된 PIN 저장
             game_date=game_datetime
         )
 
@@ -203,4 +225,42 @@ def ticket_detail(ticket_id):
     # DB에서 해당 티켓을 찾기
     ticket = Ticket.query.get_or_404(ticket_id)
     # 찾은 ticket 데이터를 HTML로 리턴
+
     return render_template('ticket/ticket_detail.html', ticket=ticket)
+
+@bp.route('/history/')
+@login_required
+def ticket_history():
+    # 구매 내역: 내가 산 주문(Order)들 (최신순)
+    purchases = Order.query.filter_by(buyer_id=g.user.id).order_by(Order.created_at.desc()).all()
+    
+    # 판매 내역: 내가 등록한 티켓(Ticket)들 (최신순)
+    sales = Ticket.query.filter_by(seller_id=g.user.id).order_by(Ticket.created_at.desc()).all()
+    
+    return render_template('ticket/ticket_history.html', 
+                           purchases=purchases, 
+                           sales=sales)
+
+# 구매확정 처리 라우트 (주소: /ticket/confirm_purchase/<order_id>/)
+@bp.route('/confirm_purchase/<int:order_id>/', methods=['POST'])
+@login_required
+def confirm_purchase(order_id):
+    # 넘어온 주문번호로 Order 찾기
+    order = Order.query.get_or_404(order_id)
+    # 본인 확인 티켓 구매자가 맞는지 검증
+    if order.buyer_id != g.user.id:
+        flash("권한이 없습니다.")
+        return redirect(url_for('ticket.ticket_history'))
+    # 3. 티켓 상태를 '거래완료'로 변경
+    order.ticket.status = '거래완료'
+    # 4. DB 저장
+    try:
+        db.session.commit()
+        flash("구매확정이 완료되었습니다. 판매자에게 정산이 진행됩니다.")
+    except Exception as e:
+        db.session.rollback()
+        print(f"구매확정 에러: {e}")
+        flash("처리 중 오류가 발생했습니다.")
+        
+    # 처리가 끝나면 다시 거래 내역(탭) 페이지로 이동
+    return redirect(url_for('ticket.ticket_history'))
