@@ -120,15 +120,24 @@
               </h3>
 
               <p class="ticket-sub">
-                {% if ticket.seat %}
+                {# 1. 새로운 좌석 등급 표시 #}
+                {% if ticket.seat_grade %}
+                <span class="fw-bold text-primary">[{{ ticket.seat_grade }}]</span>
+                {% endif %}
+
+                {# 2. 좌석 상세 정보 또는 기존 통합 정보 표시 #}
+                {% if ticket.seat_detail %}
+                {{ ticket.seat_detail }}
+                {% elif ticket.seat %}
                 {{ ticket.seat }}
                 {% endif %}
+
+                {# 3. 배송 방법 표시 (기존 유지) #}
                 {% if ticket.delivery_method %}
                 <span class="divider">|</span>
                 {{ ticket.delivery_method }}
                 {% endif %}
               </p>
-
               {% if ticket.trade_type %}
               <div class="ticket-tag-wrap">
                 <span class="ticket-tag">{{ ticket.trade_type }}</span>

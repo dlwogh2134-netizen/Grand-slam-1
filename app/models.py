@@ -23,7 +23,8 @@ class Ticket(db.Model):
     Hometeam_name = db.Column(db.String(50), nullable=False)  # KBO 구단명
     awayteam_name = db.Column(db.String(50), nullable=False)  # KBO 구단명
     sub_category = db.Column(db.String(100))  # 상세 구간
-    seat = db.Column(db.String(100), nullable=True)  # 좌석 정보
+    seat = db.Column(db.String(100), nullable=True)  # 상세 위치 (예: "10열 5번")
+    seat_detail = db.Column(db.String(50), nullable=True) # 좌석 등급 (필터 검색용. 예: "중앙석(VIP)")
     quantity = db.Column(db.Integer, nullable=False)  # 티켓 수량
     price = db.Column(db.Integer, nullable=False) #가격
     pin = db.Column(db.String(100), nullable=False)  # 거래 중요 데이터
