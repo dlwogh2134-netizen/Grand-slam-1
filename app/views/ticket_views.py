@@ -323,3 +323,54 @@ def confirm_purchase(order_id):
         
     # 처리가 끝나면 다시 거래 내역(탭) 페이지로 이동
     return redirect(url_for('ticket.ticket_history'))
+
+# 티켓삭제
+@bp.route('/ticket_delete/<int:ticket_id>/')
+@login_required
+def delete_ticket(ticket_id):
+    ticket = Ticket.query.get_or_404(ticket_id)
+    if g.user.id != ticket.seller_id:
+        flash('삭제권한이 없습니다')
+        return redirect(url_for('ticket.ticket_detail', ticket_id=ticket_id))
+    db.session.delete(ticket)
+    db.session.commit()
+    flash('상품이 성공적으로 삭제되었습니다.', 'success')
+    return redirect(url_for('auth.mypage'))
+
+# 티켓 수정
+@bp.route('/ticket_modify/<int:ticket_id>/', methods=['GET', 'POST'])
+@login_required
+def ticket_modify(ticket_id):
+    ticket = Ticket.query.get_or_404(ticket_id)
+    
+    # 권한 체크: 판매자 본인인지 확인
+    if g.user.id != ticket.seller_id:
+        flash('수정 권한이 없습니다.', 'danger')
+        return redirect(url_for('ticket.view_ticket_detail', ticket_id=ticket_id))
+        
+    if request.method == 'POST':
+        ticket.Hometeam_name = request.form.get('hometeam')
+        ticket.sub_category = request.form.get('sub_category')
+        ticket.awayteam_name = request.form.get('awayteam')
+        ticket.seat_grade = request.form.get('seat_grade')
+        ticket.seat = request.form.get('seat')
+        ticket.quantity = request.form.get('quantity', type=int)
+        ticket.price = request.form.get('price', type=int)
+        ticket.pin = request.form.get('pin')
+        
+        game_date_str = request.form.get('game_date')
+        game_time_hour = request.form.get('game_time_hour')
+        game_time_minute = request.form.get('game_time_minute')
+        
+        try:
+            game_datetime_str = f"{game_date_str} {game_time_hour}:{game_time_minute}"
+            ticket.game_date = datetime.strptime(game_datetime_str, '%Y-%m-%d %H:%M')
+        except ValueError:
+            flash('유효하지 않은 날짜 또는 시간 형식입니다.', 'danger')
+            return render_template('ticket/ticket_create.html', ticket=ticket)
+            
+        db.session.commit()
+        flash('티켓 정보가 성공적으로 수정되었습니다.', 'success')
+        return redirect(url_for('ticket.view_ticket_detail', ticket_id=ticket.id))
+        
+    return render_template('ticket/ticket_create.html', ticket=ticket)
