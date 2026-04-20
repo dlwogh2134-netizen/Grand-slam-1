@@ -451,6 +451,7 @@ def remove_from_cart(ticket_id):
     
     return redirect(url_for('ticket.cart_page'))
 
+#4. 장바구니에서 선택한 항목들만 골라서 삭제하기 (프론트엔드 -> 백엔드)
 @bp.route('/cart/remove_selected', methods=['POST'])
 def remove_selected_cart():
     # 프론트에서 보낸 ID 리스트 받기
@@ -466,6 +467,7 @@ def remove_selected_cart():
     
     return jsonify({"status": "success"})
 
+# 5. 모든 페이지에서 장바구니 숫자를 바로 쓸 수 있게 해주는 기능
 @bp.app_context_processor
 def inject_cart_count():
     # 세션에서 cart 리스트를 가져온 뒤 그 길이를 반환
