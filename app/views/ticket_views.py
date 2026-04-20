@@ -172,15 +172,27 @@ def pay_success():
         ticket_id = request.args.get('ticket_id')
         ticket = Ticket.query.get_or_404(ticket_id)
 
-        noti_msg = f"'{ticket.Hometeam_name}전' 티켓 결제가 완료되었습니다."
-        noti_link = url_for('ticket.ticket_history') # 알림 클릭 시 이동할 내역 페이지
+        # 구매자 알림
+        buyer_noti_msg = f"'{ticket.Hometeam_name}전' 티켓 결제가 완료되었습니다."
+        buyer_noti_link = url_for('ticket.ticket_history', tab='purchase') # 알림 클릭 시 구매 내역 페이지로 이동
         
-        new_noti = Notification(
+        buyer_noti = Notification(
             user_id=g.user.id, 
-            message=noti_msg, 
-            link=noti_link
+            message=buyer_noti_msg, 
+            link=buyer_noti_link
         )
-        db.session.add(new_noti)
+        db.session.add(buyer_noti)
+
+        # 판매자 알림
+        seller_noti_msg = f"등록하신 '{ticket.Hometeam_name}전' 티켓이 판매되었습니다."
+        seller_noti_link = url_for('ticket.ticket_history', tab='sales') # 알림 클릭 시 판매 내역 페이지로 이동
+        
+        seller_noti = Notification(
+            user_id=ticket.seller_id,
+            message=seller_noti_msg,
+            link=seller_noti_link
+        )
+        db.session.add(seller_noti)
 
         # 결제 금액 검증: 토스에서 받은 금액과 DB에 저장된 티켓의 총 금액을 비교
         expected_total_amount = ticket.price * ticket.quantity
@@ -341,7 +353,18 @@ def confirm_purchase(order_id):
         return redirect(url_for('ticket.ticket_history'))
     # 3. 티켓 상태를 '거래완료'로 변경
     order.ticket.status = '거래완료'
-    # 4. DB 저장
+    
+    # 4. 판매자에게 구매 확정 알림 전송
+    seller_noti_msg = f"등록하신 '{order.ticket.Hometeam_name}전' 티켓의 구매 확정 및 정산이 진행됩니다."
+    seller_noti_link = url_for('ticket.ticket_history', tab='sales')
+    seller_noti = Notification(
+        user_id=order.ticket.seller_id,
+        message=seller_noti_msg,
+        link=seller_noti_link
+    )
+    db.session.add(seller_noti)
+    
+    # 5. DB 저장
     try:
         db.session.commit()
         flash("구매확정이 완료되었습니다. 판매자에게 정산이 진행됩니다.")
