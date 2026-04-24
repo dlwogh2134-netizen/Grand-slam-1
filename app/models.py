@@ -86,7 +86,7 @@ class Cart(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     ticket_id = db.Column(db.Integer, db.ForeignKey('ticket.id'), nullable=False)
     quantity = db.Column(db.Integer, default=1)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(KST), nullable=False)
 
     # 이 부분을 추가하면 cart.ticket.title 처럼 티켓 정보에 바로 접근 가능합니다.
     user = db.relationship('User', backref=db.backref('cart_items', lazy=True))

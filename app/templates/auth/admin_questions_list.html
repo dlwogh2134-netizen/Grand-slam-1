@@ -47,14 +47,16 @@
     <li class="page-item {% if not questions.has_prev %}disabled{% endif %}">
       <a class="page-link" href="{{ url_for('auth.admin_questions_list', page=questions.prev_num, status=status) }}">이전</a>
     </li>
+
     <!-- 페이지 번호 -->
-    {% for page_num in questions.iter_pages() %} {% if page_num %}
+    {% for page_num in questions.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %} {% if page_num %}
     <li class="page-item {% if page_num == questions.page %}active{% endif %}">
       <a class="page-link" href="{{ url_for('auth.admin_questions_list', page=page_num, status=status) }}">{{ page_num }}</a>
     </li>
     {% else %}
     <li class="page-item disabled"><a class="page-link" href="#">...</a></li>
     {% endif %} {% endfor %}
+
     <!-- 다음 페이지 -->
     <li class="page-item {% if not questions.has_next %}disabled{% endif %}">
       <a class="page-link" href="{{ url_for('auth.admin_questions_list', page=questions.next_num, status=status) }}">다음</a>

@@ -66,7 +66,7 @@
         <li class="page-item {% if not purchases.has_prev %}disabled{% endif %}">
           <a class="page-link" href="{{ url_for('ticket.ticket_history', tab='purchase', page=purchases.prev_num) }}">이전</a>
         </li>
-        {% for page_num in purchases.iter_pages() %} {% if page_num %}
+        {% for page_num in purchases.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %} {% if page_num %}
         <li class="page-item {% if page_num == purchases.page %}active{% endif %}">
           <a class="page-link" href="{{ url_for('ticket.ticket_history', tab='purchase', page=page_num) }}">{{ page_num }}</a>
         </li>
@@ -116,7 +116,7 @@
         <li class="page-item {% if not sales.has_prev %}disabled{% endif %}">
           <a class="page-link" href="{{ url_for('ticket.ticket_history', tab='sales', page=sales.prev_num) }}">이전</a>
         </li>
-        {% for page_num in sales.iter_pages() %} {% if page_num %}
+        {% for page_num in sales.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %} {% if page_num %}
         <li class="page-item {% if page_num == sales.page %}active{% endif %}">
           <a class="page-link" href="{{ url_for('ticket.ticket_history', tab='sales', page=page_num) }}">{{ page_num }}</a>
         </li>

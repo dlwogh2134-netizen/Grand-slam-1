@@ -1,12 +1,11 @@
 from flask import Blueprint, flash, redirect, render_template, request, url_for, g
 import requests
-# from flask import current_app # 사용되지 않아 주석 처리 또는 삭제 가능
 
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import session
 from app.form import UserLoginForm
 from datetime import datetime, timedelta
-from app.models import User, Ticket, Question, Answer, Notification, Order
+from app.models import User, Ticket, Question, Answer, Notification, Order, KST
 import functools
 
 from app import db
@@ -69,7 +68,7 @@ def login():
             # 로그인 성공 시: 탈퇴된 계정인지 확인
             if user.is_deleted:
                 deadline = user.deleted_at + timedelta(days=30)
-                if datetime.now() <= deadline:
+                if datetime.now(KST) <= deadline:
                     user.is_deleted = False
                     user.deleted_at = None
                     db.session.commit()
@@ -278,7 +277,7 @@ def additional_info():
 @login_required
 def delete_user():
     g.user.is_deleted = True
-    g.user.deleted_at = datetime.now()
+    g.user.deleted_at = datetime.now(KST)
     db.session.commit()
     session.clear() # 탈퇴 후 자동 로그아웃
     flash('회원 탈퇴가 처리되었습니다. 30일 이내 다시 로그인하시면 계정이 복구됩니다.', 'success')
@@ -418,9 +417,14 @@ def read_all_notis():
 @login_required  # 로그인이 필요한 기능
 def create_question():
     if request.method == 'POST':
-        subject = request.form['subject']
-        content = request.form['content']
+        subject = request.form.get('subject', '').strip()
+        content = request.form.get('content', '').strip()
         ticket_id = request.form.get('ticket_id')
+        
+        # 보안: 악의적인 대용량 텍스트 도배 방지 (글자 수 제한)
+        if len(subject) > 200 or len(content) > 2000:
+            flash('제목은 200자, 내용은 2000자를 초과할 수 없습니다.', 'danger')
+            return redirect(url_for('auth.create_question'))
         
         if not ticket_id:
             ticket_id = None
@@ -429,7 +433,7 @@ def create_question():
         question = Question(
             subject=subject,
             content=content,
-            create_date=datetime.now(),
+            create_date=datetime.now(KST),
             user=g.user,
             ticket_id=ticket_id
         )
@@ -495,7 +499,7 @@ def admin_question_detail(question_id):
             answer = Answer(
                 question_id=question.id,
                 content=content,
-                create_date=datetime.now(),
+                create_date=datetime.now(KST),
                 user_id=g.user.id
             )
             db.session.add(answer)

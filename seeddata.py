@@ -4,6 +4,7 @@ from werkzeug.security import generate_password_hash
 from app import create_app, db
 from app.models import User, Ticket, Order
 from constants import KBO_TEAMS
+from app.models import KST
 
 def insert_all_test_data():
     app = create_app()
@@ -56,7 +57,7 @@ def insert_all_test_data():
                 price=random.choice([12000, 15000, 25000, 35000]),
                 pin=f"PIN-{random.randint(1000, 9999)}",
                 status='판매중',
-                game_date=datetime.now() + timedelta(days=random.randint(1, 30))
+                game_date=datetime.now(KST) + timedelta(days=random.randint(1, 30))
             )
             db.session.add(ticket)
             ticket_list.append(ticket) # 리스트에 추가
@@ -78,7 +79,7 @@ def insert_all_test_data():
                 ticket_id=ticket.id,
                 buyer_id=buyer.id,
                 # 주문 시간은 현재 기준으로 최근 1~5일 사이로 랜덤하게 세팅
-                created_at=datetime.now() - timedelta(days=random.randint(0, 5), hours=random.randint(1, 23))
+                created_at=datetime.now(KST) - timedelta(days=random.randint(0, 5), hours=random.randint(1, 23))
             )
             db.session.add(order)
             

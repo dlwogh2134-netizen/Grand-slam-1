@@ -39,7 +39,7 @@
               <option value="">전체</option>
               {% for item in kbo_teams %}
               {% if item.name != team %}
-              <option value="{{ item.name }}" {% if request.args.get('awayteam')==item.name %}selected{% endif %}>
+              <option value="{{ item.name }}" {{ 'selected' if request.args.get('awayteam') == item.name else '' }}>
                 {{ item.name }}
               </option>
               {% endif %}
@@ -50,14 +50,16 @@
           <!-- 좌석 -->
           <div class="mb-4">
             <label class="filter-label">좌석</label>
-            <select class="form-select" name="seat">
-              <option value="">전체</option>
-              {% if selected_team_data %}
-              {% for grade in selected_team_data.seat_grades %}
-              <option value="{{ grade }}" {% if request.args.get('seat')==grade %}selected{% endif %}>
-                {{ grade }}
-              </option>
-              {% endfor %}
+            <select class="form-select" name="seat" {% if not team %}disabled{% endif %}>
+              {% if team and selected_team_data %}
+                <option value="">전체</option>
+                {% for grade in selected_team_data.seat_grades %}
+                <option value="{{ grade }}" {{ 'selected' if request.args.get('seat') == grade else '' }}>
+                  {{ grade }}
+                </option>
+                {% endfor %}
+              {% else %}
+                <option value="">홈팀 선택 시 활성화</option>
               {% endif %}
             </select>
           </div>
@@ -67,10 +69,10 @@
             <label class="filter-label">수량</label>
             <select class="form-select" name="quantity">
               <option value="">전체</option>
-              <option value="1" {% if request.args.get('quantity')=='1' %}selected{% endif %}>1매</option>
-              <option value="2" {% if request.args.get('quantity')=='2' %}selected{% endif %}>2매</option>
-              <option value="3" {% if request.args.get('quantity')=='3' %}selected{% endif %}>3매</option>
-              <option value="4" {% if request.args.get('quantity')=='4' %}selected{% endif %}>4매</option>
+              <option value="1" {{ 'selected' if request.args.get('quantity') == '1' else '' }}>1매</option>
+              <option value="2" {{ 'selected' if request.args.get('quantity') == '2' else '' }}>2매</option>
+              <option value="3" {{ 'selected' if request.args.get('quantity') == '3' else '' }}>3매</option>
+              <option value="4" {{ 'selected' if request.args.get('quantity') == '4' else '' }}>4매</option>
             </select>
           </div>
           <!-- 검색 + 초기화 버튼 -->
@@ -117,10 +119,6 @@
                   {{ ticket.sub_category.split('(')[-1].replace(')', '') }}
                 </span>
                 {% endif %}
-
-                {% if ticket.row %}
-                <span class="ms-2">| {{ ticket.row }}열</span>
-                {% endif %}
               </h3>
 
               <p class="ticket-sub">
@@ -129,24 +127,11 @@
                 <span class="fw-bold text-primary">[{{ ticket.seat_grade }}]</span>
                 {% endif %}
 
-                {# 2. 좌석 상세 정보 또는 기존 통합 정보 표시 #}
-                {% if ticket.seat_detail %}
-                {{ ticket.seat_detail }}
-                {% elif ticket.seat %}
+                {# 2. 좌석 정보 표시 #}
+                {% if ticket.seat %}
                 {{ ticket.seat }}
                 {% endif %}
-
-                {# 3. 배송 방법 표시 (기존 유지) #}
-                {% if ticket.delivery_method %}
-                <span class="divider">|</span>
-                {{ ticket.delivery_method }}
-                {% endif %}
               </p>
-              {% if ticket.trade_type %}
-              <div class="ticket-tag-wrap">
-                <span class="ticket-tag">{{ ticket.trade_type }}</span>
-              </div>
-              {% endif %}
 
             </div>
 
@@ -188,79 +173,35 @@
     </div>
     <!-- 페이지네이션 -->
     <nav aria-label="티켓 페이지 이동" class="mt-4">
-      <ul class="pagination custom-pagination justify-content-center">
-        <!-- 맨 처음 -->
-        <li class="page-item {% if tickets.page == 1 %}disabled{% endif %}">
-          <a class="page-link" href="{{ url_for('ticket.ticket_list',
-                                page=1,
-                                awayteam=request.args.get('awayteam', ''),
-                                seat=request.args.get('seat', ''),
-                                quantity=request.args.get('quantity', ''),
-                                team=team,
-                                option=option) }}">
-            &laquo;
-          </a>
-        </li>
-
-        <!-- 이전 -->
+      {% set query_params = {
+        'team': team,
+        'option': option,
+        'game_date': request.args.get('game_date', ''),
+        'awayteam': request.args.get('awayteam', ''),
+        'seat': request.args.get('seat', ''),
+        'quantity': request.args.get('quantity', '')
+      } %}
+      <ul class="pagination justify-content-center mt-4">
+        <!-- 이전페이지 -->
         <li class="page-item {% if not tickets.has_prev %}disabled{% endif %}">
-          <a class="page-link" href="{{ url_for('ticket.ticket_list',
-                                page=tickets.prev_num if tickets.has_prev else 1,
-                                awayteam=request.args.get('awayteam', ''),
-                                seat=request.args.get('seat', ''),
-                                quantity=request.args.get('quantity', ''),
-                                team=team,
-                                option=option) }}">
-            &lsaquo;
-          </a>
+          <a class="page-link" href="{{ url_for('ticket.ticket_list', page=tickets.prev_num, **query_params) }}">이전</a>
         </li>
 
-        <!-- 현재 페이지 주변 숫자만 표시 -->
-        {% set start_page = tickets.page - 2 if tickets.page - 2 > 0 else 1 %}
-        {% set end_page = tickets.page + 2 if
-        tickets.page + 2 <= tickets.pages else tickets.pages %} {% for page_num in range(start_page, end_page + 1) %} {%
-          if page_num==tickets.page %} <li class="page-item active">
-          <span class="page-link">{{ page_num }}</span>
+        <!-- 페이지번호 -->
+        {% for page_num in tickets.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+          {% if page_num %}
+          <li class="page-item {% if page_num == tickets.page %}active{% endif %}">
+            <a class="page-link" href="{{ url_for('ticket.ticket_list', page=page_num, **query_params) }}">{{ page_num }}</a>
           </li>
           {% else %}
-          <li class="page-item">
-            <a class="page-link" href="{{ url_for('ticket.ticket_list',
-                                    page=page_num,
-                                    awayteam=request.args.get('awayteam', ''),
-                                    seat=request.args.get('seat', ''),
-                                    quantity=request.args.get('quantity', ''),
-                                    team=team,
-                                    option=option) }}">
-              {{ page_num }}
-            </a>
-          </li>
-          {% endif %} {% endfor %}
+          <li class="page-item disabled"><a class="page-link" href="#">...</a></li>
+          {% endif %}
+        {% endfor %}
 
-          <!-- 다음 -->
-          <li class="page-item {% if not tickets.has_next %}disabled{% endif %}">
-            <a class="page-link" href="{{ url_for('ticket.ticket_list',
-                                page=tickets.next_num if tickets.has_next else tickets.pages,
-                                awayteam=request.args.get('awayteam', ''),
-                                seat=request.args.get('seat', ''),
-                                quantity=request.args.get('quantity', ''),
-                                team=team,
-                                option=option) }}">
-              &rsaquo;
-            </a>
-          </li>
-
-          <!-- 맨 끝 -->
-          <li class="page-item {% if tickets.page == tickets.pages %}disabled{% endif %}">
-            <a class="page-link" href="{{ url_for('ticket.ticket_list',
-                                page=tickets.pages,
-                                awayteam=request.args.get('awayteam', ''),
-                                seat=request.args.get('seat', ''),
-                                quantity=request.args.get('quantity', ''),
-                                team=team,
-                                option=option) }}">
-              &raquo;
-            </a>
-          </li>
+        <!-- 다음페이지 -->
+        <li class="page-item {% if not tickets.has_next %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('ticket.ticket_list', page=tickets.next_num, **query_params) }}">다음</a>
+        </li>
       </ul>
     </nav>
   </div>
