@@ -26,7 +26,6 @@ from . import models
 def create_app():
     app = Flask(__name__)
     app.config.from_object(config)
-    app.secret_key = "key"
 
     # ORM 초기화
     db.init_app(app)

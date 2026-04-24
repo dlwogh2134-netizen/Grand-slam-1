@@ -211,9 +211,9 @@
 }
 
 .ticket-sub span {
-    font-size: 14px; 
-    color: #111 !important;     
-    font-weight: 700; 
+  font-size: 14px;
+  color: #111 !important;
+  font-weight: 700;
 }
 
 .ticket-sub {
@@ -291,7 +291,9 @@
 @media (max-width: 768px) {
   .ticket-card-top {
     flex-direction: column;
-    gap: 10px;.floating-cart {
+    gap: 10px;
+  }
+  .floating-cart {
     position: fixed;
     top: 200px;
     right: 30px;
@@ -301,10 +303,10 @@
     border-radius: 12px;
     padding: 15px 10px;
     z-index: 1000;
-
-    }
   }
+  /* 모바일 환경에서는 절대 위치를 풀고 자연스럽게 배치되도록 수정 */
   .ticket-price-box {
+    position: relative;
     width: 100%;
     text-align: left;
     margin-top: 8px;
@@ -313,45 +315,43 @@
 
 /* 장바구니 스타일 */
 .floating-cart {
-    width: 100%;       
-    border-radius: 12px;
-    padding: 15px 10px;
-    margin-bottom: 15px; 
-    box-shadow: 0 .125rem .25rem rgba(0,0,0,.075);
+  width: 100%;
+  border-radius: 12px;
+  padding: 15px 10px;
+  margin-bottom: 15px;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
 }
-
 
 /* 최근 본 상품 사이드바 스타일 */
 #recentViewedDrawer {
-    width: 350px; /* 팝업 너비 조절 */
+  width: 350px; /* 팝업 너비 조절 */
 }
 
 .offcanvas-body .list-group-item:hover {
-    background-color: #f8f9fa;
-    transition: background 0.2s;
+  background-color: #f8f9fa;
+  transition: background 0.2s;
 }
 
 /* 오른쪽 사이드 박스에 있는 '더보기' 버튼 스타일 */
 .side-box .small {
-    color: #007bff;
-    text-decoration: underline;
-    text-underline-offset: 3px;
+  color: #007bff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* ticket-link 클래스를 가진 a 태그의 밑줄과 색상 고정 */
 .ticket-link {
-    text-decoration: none !important; 
-    color: inherit;                 
-    display: block;                  
+  text-decoration: none !important;
+  color: inherit;
+  display: block;
 }
 
 /* 1. 최근 본 상품 사이드바를 모든 요소보다 위로 (z-index 대폭 상향) */
 .offcanvas.offcanvas-end {
-    z-index: 3000 !important;
+  z-index: 3000 !important;
 }
 
 /* 2. 사이드바가 열릴 때 화면을 어둡게 만드는 배경막도 같이 올리기 */
 .offcanvas-backdrop {
-    z-index: 2990 !important;
+  z-index: 2990 !important;
 }
-
