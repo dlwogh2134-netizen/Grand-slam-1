@@ -156,6 +156,13 @@ def pay_success():
     ids_raw = request.args.get('ticket_ids') or request.args.get('ticket_id')
     ticket_id_list = [tid.strip() for tid in ids_raw.split(',')] if ids_raw else []
 
+    # [추가] 결제 최종 승인 API 호출 전 티켓 상태 먼저 확인 (동시성/품절 방어)
+    tickets = Ticket.query.filter(Ticket.id.in_(ticket_id_list)).all()
+    for t in tickets:
+        if t.status != '판매중':
+            flash(f"'{t.Hometeam_name} vs {t.awayteam_name}' 티켓은 이미 판매되었거나 삭제되었습니다. 결제가 진행되지 않습니다.", "danger")
+            return redirect(url_for('main.index'))
+
     # 2. 토스 개발자 센터에서 발급받은 '시크릿 키'
     TOSS_SECRET_KEY = "test_gsk_docs_OaPz8L5KdmQXkzRz3y47BMw6"
 
@@ -172,8 +179,8 @@ def pay_success():
 
     # 4. 토스 서버의 응답 결과 확인
     if response.status_code == 200:
-        # 승인 성공시 DB에서 해당 티켓들 가져오기
-        tickets = Ticket.query.filter(Ticket.id.in_(ticket_id_list)).all()
+        # 승인 성공시 DB에서 해당 티켓들 가져오기 (사전 방어 로직에서 이미 가져왔으므로 주석 처리)
+        # tickets = Ticket.query.filter(Ticket.id.in_(ticket_id_list)).all()
 
         # 결제 금액 검증: 모든 티켓의 (가격 * 수량) 합계와 토스 응답 금액 비교
         expected_total_amount = sum(t.price * t.quantity for t in tickets)
@@ -269,6 +276,15 @@ def ticket_create():
                     game_time_minute, seat_grade, seat_detail, quantity, price, user_pin]):
             flash('모든 필수 필드를 입력해주세요.', 'danger')
             return render_template('ticket/ticket_create.html') 
+
+        # 수량 및 금액 음수 방지 검증
+        if quantity <= 0:
+            flash('티켓 수량은 1개 이상이어야 합니다.', 'danger')
+            return render_template('ticket/ticket_create.html')
+        if price < 0:
+            flash('티켓 가격은 0원 이상이어야 합니다.', 'danger')
+            return render_template('ticket/ticket_create.html')
+
         # game_date와 game_time을 조합하여 datetime 객체 생성
         try:
             # YYYY-MM-DD HH:MM 형식의 문자열 생성
@@ -311,19 +327,20 @@ def ticket_create():
 def ticket_detail(ticket_id):
     ticket = Ticket.query.get_or_404(ticket_id)
     
-    # 1. [추가] 최근 본 상품 세션 저장 로직
-    if 'recent_views' not in session:
-        session['recent_views'] = []
-    
-    recent = session['recent_views']
-    if ticket_id in recent:
-        recent.remove(ticket_id) # 중복 제거 (순서 최신화)
-    
-    recent.insert(0, ticket_id)  # 리스트 맨 앞에 추가
-    session['recent_views'] = recent[:10] # 최대 10개까지 기억
-    session.modified = True      # 세션 변경사항 강제 적용
+    # [수정된 부분] 판매자와 로그인한 유저가 다를 때만 최근 본 상품에 추가
+    if g.user.id != ticket.seller_id:
+        if 'recent_views' not in session:
+            session['recent_views'] = []
+        
+        recent = session['recent_views']
+        if ticket_id in recent:
+            recent.remove(ticket_id) 
+        
+        recent.insert(0, ticket_id) 
+        session['recent_views'] = recent[:10]
+        session.modified = True
 
-    # 2. 장바구니 담김 여부 체크
+    # 장바구니 담김 여부 체크 (기존 로직 유지)
     is_in_cart = False
     if g.user:
         cart_item = Cart.query.filter_by(user_id=g.user.id, ticket_id=ticket_id).first()
@@ -409,7 +426,13 @@ def delete_ticket(ticket_id):
     if g.user.id != ticket.seller_id:
         flash('삭제권한이 없습니다')
         return redirect(url_for('ticket.ticket_detail', ticket_id=ticket_id))
-    db.session.delete(ticket)
+        
+    if ticket.status in ['판매완료', '거래완료']:
+        flash('이미 판매가 진행 중이거나 완료된 티켓은 삭제할 수 없습니다.', 'danger')
+        return redirect(url_for('ticket.ticket_detail', ticket_id=ticket_id))
+        
+    # Hard Delete 방지: 상태만 변경 (Soft Delete)
+    ticket.status = '삭제됨'
     db.session.commit()
     flash('상품이 성공적으로 삭제되었습니다.', 'success')
     return redirect(url_for('auth.mypage'))
@@ -425,14 +448,28 @@ def ticket_modify(ticket_id):
         flash('수정 권한이 없습니다.', 'danger')
         return redirect(url_for('ticket.view_ticket_detail', ticket_id=ticket_id))
         
+    if ticket.status in ['판매완료', '거래완료']:
+        flash('이미 판매가 진행 중이거나 완료된 티켓은 수정할 수 없습니다.', 'danger')
+        return redirect(url_for('ticket.view_ticket_detail', ticket_id=ticket_id))
+
     if request.method == 'POST':
+        new_quantity = request.form.get('quantity', type=int)
+        new_price = request.form.get('price', type=int)
+        
+        if new_quantity is None or new_quantity <= 0:
+            flash('티켓 수량은 1개 이상이어야 합니다.', 'danger')
+            return render_template('ticket/ticket_create.html', ticket=ticket)
+        if new_price is None or new_price < 0:
+            flash('티켓 가격은 0원 이상이어야 합니다.', 'danger')
+            return render_template('ticket/ticket_create.html', ticket=ticket)
+
         ticket.Hometeam_name = request.form.get('hometeam')
         ticket.sub_category = request.form.get('sub_category')
         ticket.awayteam_name = request.form.get('awayteam')
         ticket.seat_grade = request.form.get('seat_grade')
         ticket.seat = request.form.get('seat')
-        ticket.quantity = request.form.get('quantity', type=int)
-        ticket.price = request.form.get('price', type=int)
+        ticket.quantity = new_quantity
+        ticket.price = new_price
         ticket.pin = request.form.get('pin')
         
         game_date_str = request.form.get('game_date')
@@ -523,8 +560,6 @@ def recent_ticket(ticket_id):
     return render_template('ticket/detail.html', ticket=ticket)
 
 # 5. 모든 페이지에서 장바구니 숫자를 쓸 수 있게 해주는 기능 (추가할 부분)
-
-
 @bp.app_context_processor
 def inject_common_data():
     # 1. 장바구니 개수 로직 (기존 유지)

@@ -29,7 +29,7 @@
           <!-- 경기 일시 -->
           <div class="mb-4">
             <label class="filter-label">경기 일시</label>
-            <input type="date" class="form-control" name="game_date" value="{{ request.args.get('game_date', '') }}" />
+            <input type="date" class="form-control" name="game_date" value="{{ request.args.get('game_date', '') }}"  min="{{ today }}"/>
           </div>
 
           <!-- 상대팀 -->
@@ -103,10 +103,6 @@
                 {{ ticket.game_date.strftime('%Y.%m.%d %H:%M') if ticket.game_date else '일시 미정' }}
               </span>
             </div>
-
-            <div class="ticket-badges">
-              <span class="badge-compare">비교담기</span>
-            </div>
           </div>
 
           <div class="ticket-card-body">
@@ -171,10 +167,6 @@
 
     <!-- 오른쪽 사이드 -->
     <div class="col-lg-2">
-      <div class="side-box p-3 rounded-4 mb-3 text-center">
-        상품 비교 <span class="text-danger">0</span>
-      </div>
-
       <div class="side-box p-3 rounded-4 mb-3 text-center">
         최근 본 상품
         <span class="text-danger fw-bold">
@@ -377,6 +369,22 @@
         })
         .catch(err => console.error("전체 삭제 중 에러 발생:", err));
     }
+    
+
+    document.addEventListener("DOMContentLoaded", function () {
+    // 1. 오늘 날짜를 구함 (한국 시간 기준 YYYY-MM-DD 형식)
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const formattedToday = `${year}-${month}-${day}`;
+
+    // 2. name="game_date"인 input 요소를 찾아 min 속성 부여
+    const gameDateInput = document.querySelector('input[name="game_date"]');
+    if (gameDateInput) {
+      gameDateInput.min = formattedToday;
+    }
+  });
   </script>
 
 
