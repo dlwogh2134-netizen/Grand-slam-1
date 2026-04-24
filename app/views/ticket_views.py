@@ -1,12 +1,11 @@
 from datetime import datetime, timedelta
 from flask import Blueprint, flash, g, redirect, render_template, request, session, url_for, jsonify
 import requests
-from app.models import Notification, Order, Ticket, Cart
+from app.models import Notification, Order, Ticket, Cart, KST
 from app.views.auth_views import login_required
 from constants import KBO_TEAMS
 from app import db
-from werkzeug.security import generate_password_hash
-from sqlalchemy import or_,func
+from sqlalchemy import or_
 
 
 # 티켓카드 이름 간소화
@@ -129,8 +128,8 @@ def ticket_list():
     )
 
 # 프론트엔드에서 결제 성공 시!
-# 프론트엔드에서 결제 성공 시!
 @bp.route('/pay/success')
+@login_required
 def pay_success():
     # 1. 토스가 URL에 붙여서 보낸 데이터 받기 (ticket_ids 추가 대응)
     payment_key = request.args.get('paymentKey')
@@ -164,14 +163,26 @@ def pay_success():
 
     # 4. 토스 서버의 응답 결과 확인
     if response.status_code == 200:
-        # 승인 성공시 DB에서 해당 티켓들 가져오기 (사전 방어 로직에서 이미 가져왔으므로 주석 처리)
-        # tickets = Ticket.query.filter(Ticket.id.in_(ticket_id_list)).all()
+        # [필수 방어] 동시성 문제 해결: DB Lock(with_for_update)을 걸고 최신 상태 다시 확인
+        tickets = Ticket.query.filter(Ticket.id.in_(ticket_id_list)).with_for_update().all()
+        
+        # 찰나의 순간에 이미 팔렸다면 (결제 승인은 났지만 상태가 바뀜)
+        if any(t.status != '판매중' for t in tickets):
+            db.session.rollback()
+            # 토스 결제 자동 취소(환불) API 호출
+            cancel_url = f"https://api.tosspayments.com/v1/payments/{payment_key}/cancel"
+            requests.post(cancel_url, json={"cancelReason": "동시 결제로 인한 품절"}, auth=(TOSS_SECRET_KEY, ''))
+            
+            flash("안타깝게도 결제하는 찰나에 다른 분이 먼저 구매했습니다. 결제가 자동 취소(환불) 되었습니다.", "danger")
+            return redirect(url_for('main.index'))
 
         # 결제 금액 검증: 모든 티켓의 (가격 * 수량) 합계와 토스 응답 금액 비교
         expected_total_amount = sum(t.price * t.quantity for t in tickets)
         
         if int(amount) != expected_total_amount:
             db.session.rollback() # 금액 불일치 시 롤백
+            cancel_url = f"https://api.tosspayments.com/v1/payments/{payment_key}/cancel"
+            requests.post(cancel_url, json={"cancelReason": "결제 금액 위변조 의심"}, auth=(TOSS_SECRET_KEY, ''))
             flash("결제 금액이 일치하지 않습니다. 관리자에게 문의해주세요.")
             return redirect(url_for('main.index'))
 
@@ -221,7 +232,10 @@ def pay_success():
         except Exception as e:
             db.session.rollback()
             print(f"DB 저장 에러: {e}")
-            flash("결제는 승인되었으나 시스템 저장 중 문제가 발생했습니다.")
+            # DB 저장에 실패하면 고객의 돈을 다시 돌려줘야 합니다 (자동 환불)
+            cancel_url = f"https://api.tosspayments.com/v1/payments/{payment_key}/cancel"
+            requests.post(cancel_url, json={"cancelReason": "시스템 저장 중 오류로 인한 자동 환불"}, auth=(TOSS_SECRET_KEY, ''))
+            flash("시스템 오류가 발생하여 결제가 자동 취소(환불) 되었습니다. 다시 시도해 주세요.", "danger")
             return redirect(url_for('main.index'))
         
     else:
@@ -244,25 +258,30 @@ def pay_fail():
 def ticket_create():
     if request.method == 'POST':
         # 폼 데이터 추출
-        hometeam_raw = request.form.get('hometeam')
+        hometeam_raw = request.form.get('hometeam', '').strip()
         hometeam_name = TEAM_NORMALIZE.get(hometeam_raw, hometeam_raw)
-        sub_category = request.form.get('sub_category') # 경기 정보 (장소 및 요일)
-        awayteam_raw = request.form.get('awayteam')
+        sub_category = request.form.get('sub_category', '').strip() # 경기 정보 (장소 및 요일)
+        awayteam_raw = request.form.get('awayteam', '').strip()
         awayteam_name = TEAM_NORMALIZE.get(awayteam_raw, awayteam_raw)
-        game_date_str = request.form.get('game_date') # YYYY-MM-DD
-        game_time_hour = request.form.get('game_time_hour') # HH
-        game_time_minute = request.form.get('game_time_minute') # MM
-        seat_grade = request.form.get('seat_grade')
-        seat_detail = request.form.get('seat') # 'seat_detail' input의 name은 'seat' (상세 위치)
+        game_date_str = request.form.get('game_date', '').strip() # YYYY-MM-DD
+        game_time_hour = request.form.get('game_time_hour', '').strip() # HH
+        game_time_minute = request.form.get('game_time_minute', '').strip() # MM
+        seat_grade = request.form.get('seat_grade', '').strip()
+        seat_detail = request.form.get('seat', '').strip() # 'seat_detail' input의 name은 'seat' (상세 위치)
         quantity = request.form.get('quantity', type=int)
         price = request.form.get('price', type=int)
-        user_pin = request.form.get('pin') # 사용자가 입력한 PIN 번호
+        user_pin = request.form.get('pin', '').strip() # 사용자가 입력한 PIN 번호
 
         # 필수 필드 검증
         if not all([hometeam_name, sub_category, awayteam_name, game_date_str, game_time_hour,
                     game_time_minute, seat_grade, seat_detail, quantity, price, user_pin]):
             flash('모든 필수 필드를 입력해주세요.', 'danger')
             return render_template('ticket/ticket_create.html') 
+
+        # 보안: 대용량 텍스트 도배 및 DB 용량 초과 방지 (DB 컬럼 길이 100자에 맞춤)
+        if any(len(val) > 100 for val in [sub_category, seat_grade, seat_detail, user_pin]):
+            flash('입력값(장소, 좌석 등급, 상세 위치, PIN 번호)은 각각 100자를 초과할 수 없습니다.', 'danger')
+            return render_template('ticket/ticket_create.html')
 
         # 수량 및 금액 음수 방지 검증
         if quantity <= 0:
@@ -276,7 +295,7 @@ def ticket_create():
         try:
             # YYYY-MM-DD HH:MM 형식의 문자열 생성
             game_datetime_str = f"{game_date_str} {game_time_hour}:{game_time_minute}"
-            game_datetime = datetime.strptime(game_datetime_str, '%Y-%m-%d %H:%M')
+            game_datetime = datetime.strptime(game_datetime_str, '%Y-%m-%d %H:%M').replace(tzinfo=KST)
         except ValueError:
             flash('유효하지 않은 날짜 또는 시간 형식입니다.', 'danger')
             return render_template('ticket/ticket_create.html')
@@ -450,24 +469,29 @@ def ticket_modify(ticket_id):
             flash('티켓 가격은 0원 이상이어야 합니다.', 'danger')
             return render_template('ticket/ticket_create.html', ticket=ticket)
 
-        hometeam_raw = request.form.get('hometeam')
+        hometeam_raw = request.form.get('hometeam', '').strip()
         ticket.Hometeam_name = TEAM_NORMALIZE.get(hometeam_raw, hometeam_raw)
-        ticket.sub_category = request.form.get('sub_category')
-        awayteam_raw = request.form.get('awayteam')
+        ticket.sub_category = request.form.get('sub_category', '').strip()
+        awayteam_raw = request.form.get('awayteam', '').strip()
         ticket.awayteam_name = TEAM_NORMALIZE.get(awayteam_raw, awayteam_raw)
-        ticket.seat_grade = request.form.get('seat_grade')
-        ticket.seat = request.form.get('seat')
+        ticket.seat_grade = request.form.get('seat_grade', '').strip()
+        ticket.seat = request.form.get('seat', '').strip()
         ticket.quantity = new_quantity
         ticket.price = new_price
-        ticket.pin = request.form.get('pin')
+        ticket.pin = request.form.get('pin', '').strip()
         
-        game_date_str = request.form.get('game_date')
-        game_time_hour = request.form.get('game_time_hour')
-        game_time_minute = request.form.get('game_time_minute')
+        game_date_str = request.form.get('game_date', '').strip()
+        game_time_hour = request.form.get('game_time_hour', '').strip()
+        game_time_minute = request.form.get('game_time_minute', '').strip()
+        
+        # 보안: 대용량 텍스트 도배 방지
+        if any(len(val) > 100 for val in [ticket.sub_category, ticket.seat_grade, ticket.seat, ticket.pin]):
+            flash('입력값(장소, 좌석 등급, 상세 위치, PIN 번호)은 각각 100자를 초과할 수 없습니다.', 'danger')
+            return render_template('ticket/ticket_create.html', ticket=ticket)
         
         try:
             game_datetime_str = f"{game_date_str} {game_time_hour}:{game_time_minute}"
-            ticket.game_date = datetime.strptime(game_datetime_str, '%Y-%m-%d %H:%M')
+            ticket.game_date = datetime.strptime(game_datetime_str, '%Y-%m-%d %H:%M').replace(tzinfo=KST)
         except ValueError:
             flash('유효하지 않은 날짜 또는 시간 형식입니다.', 'danger')
             return render_template('ticket/ticket_create.html', ticket=ticket)
@@ -511,8 +535,19 @@ def add_to_cart():
 @bp.route('/cart')
 @login_required
 def cart_page():
-    # 여기서 변수명을 cart_items로 넘기고 있습니다.
-    cart_items = Cart.query.filter_by(user_id=g.user.id).all()
+    all_cart_items = Cart.query.filter_by(user_id=g.user.id).all()
+    
+    # 누군가 이미 구매했거나, 판매자가 삭제한 티켓은 장바구니에서 자동 제거
+    cart_items = []
+    for item in all_cart_items:
+        if item.ticket.status == '판매중':
+            cart_items.append(item)
+        else:
+            db.session.delete(item)
+            
+    if len(all_cart_items) != len(cart_items):
+        db.session.commit()
+        
     return render_template('ticket/cart.html', cart_items=cart_items)
 
 # 3. 장바구니에서 선택 삭제 (DB 삭제 방식)
@@ -529,24 +564,6 @@ def remove_selected_cart():
     
     db.session.commit()
     return jsonify({"status": "success"})
-
-# 4. '최근 본 상품' 로직 (기존 세션 구조 활용)
-@bp.route('/ticket/detail/<int:ticket_id>')
-def recent_ticket(ticket_id):
-    # 상세 페이지 접속 시 세션에 최근 본 상품 ID 저장
-    if 'recent_views' not in session:
-        session['recent_views'] = []
-    
-    recent = session['recent_views']
-    if ticket_id in recent:
-        recent.remove(ticket_id) # 이미 있으면 순서 최신화를 위해 제거
-    
-    recent.insert(0, ticket_id) # 가장 앞에 추가
-    session['recent_views'] = recent[:10] # 최근 5개만 유지
-    session.modified = True
-    
-    ticket = Ticket.query.get_or_404(ticket_id)
-    return render_template('ticket/detail.html', ticket=ticket)
 
 # 5. 모든 페이지에서 장바구니 숫자를 쓸 수 있게 해주는 기능 (추가할 부분)
 @bp.app_context_processor
