@@ -311,19 +311,20 @@ def ticket_create():
 def ticket_detail(ticket_id):
     ticket = Ticket.query.get_or_404(ticket_id)
     
-    # 1. [추가] 최근 본 상품 세션 저장 로직
-    if 'recent_views' not in session:
-        session['recent_views'] = []
-    
-    recent = session['recent_views']
-    if ticket_id in recent:
-        recent.remove(ticket_id) # 중복 제거 (순서 최신화)
-    
-    recent.insert(0, ticket_id)  # 리스트 맨 앞에 추가
-    session['recent_views'] = recent[:10] # 최대 10개까지 기억
-    session.modified = True      # 세션 변경사항 강제 적용
+    # [수정된 부분] 판매자와 로그인한 유저가 다를 때만 최근 본 상품에 추가
+    if g.user.id != ticket.seller_id:
+        if 'recent_views' not in session:
+            session['recent_views'] = []
+        
+        recent = session['recent_views']
+        if ticket_id in recent:
+            recent.remove(ticket_id) 
+        
+        recent.insert(0, ticket_id) 
+        session['recent_views'] = recent[:10]
+        session.modified = True
 
-    # 2. 장바구니 담김 여부 체크
+    # 장바구니 담김 여부 체크 (기존 로직 유지)
     is_in_cart = False
     if g.user:
         cart_item = Cart.query.filter_by(user_id=g.user.id, ticket_id=ticket_id).first()
@@ -523,8 +524,6 @@ def recent_ticket(ticket_id):
     return render_template('ticket/detail.html', ticket=ticket)
 
 # 5. 모든 페이지에서 장바구니 숫자를 쓸 수 있게 해주는 기능 (추가할 부분)
-
-
 @bp.app_context_processor
 def inject_common_data():
     # 1. 장바구니 개수 로직 (기존 유지)
